@@ -1,9 +1,11 @@
 const express = require("express");
 var cors = require("cors");
+
+const bcrypt = require("bcryptjs");
+
 require("dotenv").config();
 const app = express();
 const port = process.env.PORT;
-
 const { MongoClient, ServerApiVersion } = require("mongodb");
 const uri = process.env.MONGO_URI;
 //middlewares
@@ -27,12 +29,24 @@ async function run() {
     // Send a ping to confirm a successful connection
     //###############-------user api----###############
 
-    app.post("/userInfo", async (req, res) => {
-      const newUser = req.body;
-      const result = await userCollection.insertOne(newUser);
-      console.log(newUser);
-
+    app.get("/userInfo", async (req, res) => {
+      const result = await userCollection.find().toArray();
       res.send(result);
+    });
+
+    app.post("/userInfo", async (req, res) => {
+      const { name, email, password } = req.body;
+      const hashedPass = await bcrypt.hash(password, 10);
+      const user = {
+        name,
+        email,
+        password: hashedPass,
+        role: "user",
+        createdAt: new Date().toISOString(),
+      };
+      const result = await userCollection.insertOne(user);
+
+      res.send({ success: true, result });
     });
 
     await client.db("admin").command({ ping: 1 });
