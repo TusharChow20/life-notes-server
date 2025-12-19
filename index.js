@@ -48,7 +48,34 @@ async function run() {
 
       res.send({ success: true, result });
     });
+    // Add this after your existing /userInfo POST route
 
+    app.post("/login", async (req, res) => {
+      const { email, password } = req.body;
+      const user = await userCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid credentials",
+        });
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid credentials",
+        });
+      }
+      const { password: _, ...userWithoutPassword } = user;
+
+      res.json({
+        success: true,
+        user: userWithoutPassword,
+      });
+    });
     await client.db("admin").command({ ping: 1 });
     console.log(
       `Pinged your deployment. You successfully connected to MongoDB! ${port}`
