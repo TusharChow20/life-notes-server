@@ -35,17 +35,54 @@ async function run() {
     });
 
     app.post("/userInfo", async (req, res) => {
-      const { name, email, password } = req.body;
-      const hashedPass = await bcrypt.hash(password, 10);
-      const user = {
+      // console.log("Incoming user:", req.body);
+      const {
         name,
         email,
-        password: hashedPass,
-        role: "user",
-        createdAt: new Date().toISOString(),
-      };
-      const result = await userCollection.insertOne(user);
+        password,
+        image = "https",
+        provider = "user",
+      } = req.body;
+      const existingUser = await userCollection.findOne({ email });
+      if (existingUser) {
 
+        return res.status(400).json({
+          success: false,
+          message: "User already exists",
+        });
+      }
+
+      let user;
+
+      if (provider === "google") {
+        user = {
+          name,
+          email,
+          image: image || null,
+          provider: "google",
+          role: "user",
+          createdAt: new Date().toISOString(),
+        };
+      } else {
+        if (!password) {
+          return res.status(400).json({
+            success: false,
+            message: "Password is required",
+          });
+        }
+
+        const hashedPass = await bcrypt.hash(password, 10);
+        user = {
+          name,
+          email,
+          password: hashedPass,
+          provider: "credentials",
+          role: "user",
+          createdAt: new Date().toISOString(),
+        };
+      }
+
+      const result = await userCollection.insertOne(user);
       res.send({ success: true, result });
     });
     // Add this after your existing /userInfo POST route
