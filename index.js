@@ -31,6 +31,7 @@ async function run() {
     const myDB = client.db("LifeNotes");
     const userCollection = myDB.collection("userInfo");
     const paymentCollection = myDB.collection("payments");
+    const publicLessonCollection = myDB.collection("publicLesson");
     // Send a ping to confirm a successful connection
     //###############-------user api----###############
 
@@ -119,6 +120,14 @@ async function run() {
       });
     });
 
+    //lesson
+    app.get("/publicLesson", async (req, res) => {
+      const result = await publicLessonCollection.find().toArray();
+      res.json(result);
+    });
+
+    //payment
+
     app.get("/users", async (req, res) => {
       try {
         const { email } = req.query;
@@ -140,6 +149,7 @@ async function run() {
         res.status(500).json({ error: "Failed to fetch user" });
       }
     });
+
     app.post("/create-checkout-session", async (req, res) => {
       try {
         const { email, userId } = req.body;
