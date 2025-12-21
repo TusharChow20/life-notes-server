@@ -40,6 +40,25 @@ async function run() {
       res.send(result);
     });
 
+    // single user ---------------------
+    app.get("/users/:email", async (req, res) => {
+      try {
+        const { email } = req.params;
+
+        const user = await userCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        const { password, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+      } catch (error) {
+        console.error("Error fetching user:", error);
+        res.status(500).json({ error: "Failed to fetch user" });
+      }
+    });
+
     app.post("/userInfo", async (req, res) => {
       // console.log("Incoming user:", req.body);
       const {
