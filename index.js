@@ -6,8 +6,12 @@ const bcrypt = require("bcryptjs");
 require("dotenv").config();
 const app = express();
 const port = process.env.PORT;
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGO_URI;
+
+//  Initialize Stripe
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 //middlewares
 app.use(express.json());
 app.use(cors());
@@ -26,6 +30,7 @@ async function run() {
     await client.connect();
     const myDB = client.db("LifeNotes");
     const userCollection = myDB.collection("userInfo");
+    const paymentCollection = myDB.collection("payments");
     // Send a ping to confirm a successful connection
     //###############-------user api----###############
 
@@ -45,7 +50,6 @@ async function run() {
       } = req.body;
       const existingUser = await userCollection.findOne({ email });
       if (existingUser) {
-
         return res.status(400).json({
           success: false,
           message: "User already exists",
@@ -61,6 +65,7 @@ async function run() {
           image: image || null,
           provider: "google",
           role: "user",
+          isPremium: false,
           createdAt: new Date().toISOString(),
         };
       } else {
@@ -78,6 +83,7 @@ async function run() {
           password: hashedPass,
           provider: "credentials",
           role: "user",
+          isPremium: false,
           createdAt: new Date().toISOString(),
         };
       }
@@ -85,7 +91,6 @@ async function run() {
       const result = await userCollection.insertOne(user);
       res.send({ success: true, result });
     });
-    // Add this after your existing /userInfo POST route
 
     app.post("/login", async (req, res) => {
       const { email, password } = req.body;
@@ -113,6 +118,204 @@ async function run() {
         user: userWithoutPassword,
       });
     });
+
+    app.get("/users", async (req, res) => {
+      try {
+        const { email } = req.query;
+
+        if (!email) {
+          return res.status(400).json({ error: "Email is required" });
+        }
+
+        const user = await userCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        const { password, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+      } catch (error) {
+        console.error("Error fetching user:", error);
+        res.status(500).json({ error: "Failed to fetch user" });
+      }
+    });
+    app.post("/create-checkout-session", async (req, res) => {
+      try {
+        const { email, userId } = req.body;
+
+        if (!email || !userId) {
+          return res
+            .status(400)
+            .json({ error: "Email and userId are required" });
+        }
+
+        // Verify user exists
+        const user = await userCollection.findOne({
+          _id: new ObjectId(userId),
+        });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        // Check if already premium
+        if (user.isPremium) {
+          return res.status(400).json({ error: "User is already premium" });
+        }
+
+        // Create Stripe checkout session
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: "Premium Lifetime Access",
+                  description: "Unlock all premium features forever",
+                },
+                unit_amount: 1500, // $15.00 in cents
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}&user_id=${userId}`,
+          cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
+          customer_email: email,
+          metadata: {
+            userId: userId,
+            email: email,
+            planType: "premium",
+          },
+        });
+
+        res.json({ url: session.url });
+      } catch (error) {
+        console.error("Error creating checkout session:", error);
+        res.status(500).json({ error: "Failed to create checkout session" });
+      }
+    });
+
+    // Verify Payment - This replaces the webhook
+    app.post("/verify-payment", async (req, res) => {
+      try {
+        const { sessionId, userId } = req.body;
+
+        if (!sessionId || !userId) {
+          return res.status(400).json({
+            success: false,
+            message: "Session ID and User ID are required",
+          });
+        }
+
+        // Retrieve session from Stripe
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        if (session.payment_status === "paid") {
+          // Get user details
+          const user = await userCollection.findOne({
+            _id: new ObjectId(userId),
+          });
+
+          if (!user) {
+            return res.status(404).json({
+              success: false,
+              message: "User not found",
+            });
+          }
+
+          // Update user to premium
+          await userCollection.updateOne(
+            { _id: new ObjectId(userId) },
+            {
+              $set: {
+                isPremium: true,
+                premiumActivatedAt: new Date(),
+                stripeSessionId: session.id,
+              },
+            }
+          );
+
+          // Store payment record
+          const paymentHistory = {
+            userId: userId,
+            email: user.email,
+            amount: session.amount_total / 100,
+            currency: session.currency,
+            paymentStatus: session.payment_status,
+            stripeSessionId: session.id,
+            stripePaymentIntentId: session.payment_intent,
+            planType: "premium",
+            paymentDate: new Date(),
+            createdAt: new Date(),
+          };
+
+          await paymentCollection.insertOne(paymentHistory);
+
+          console.log(`User ${user.email} upgraded to premium successfully`);
+
+          res.json({
+            success: true,
+            message: "Payment verified and user upgraded to premium",
+            payment: paymentHistory,
+          });
+        } else {
+          res.status(400).json({
+            success: false,
+            message: "Payment not completed",
+          });
+        }
+      } catch (error) {
+        console.error("Error verifying payment:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to verify payment",
+        });
+      }
+    });
+
+    // Verify premium status
+    app.get("/verify-premium/:userId", async (req, res) => {
+      try {
+        const { userId } = req.params;
+
+        const user = await userCollection.findOne({
+          _id: new ObjectId(userId),
+        });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({
+          isPremium: user.isPremium || false,
+          premiumActivatedAt: user.premiumActivatedAt || null,
+        });
+      } catch (error) {
+        console.error("Error verifying premium status:", error);
+        res.status(500).json({ error: "Failed to verify premium status" });
+      }
+    });
+
+    // Get payment history
+    app.get("/payment-history/:email", async (req, res) => {
+      try {
+        const { email } = req.params;
+
+        const payments = await paymentCollection
+          .find({ email })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.json(payments);
+      } catch (error) {
+        console.error("Error fetching payment history:", error);
+        res.status(500).json({ error: "Failed to fetch payment history" });
+      }
+    });
+
     await client.db("admin").command({ ping: 1 });
     console.log(
       `Pinged your deployment. You successfully connected to MongoDB! ${port}`
