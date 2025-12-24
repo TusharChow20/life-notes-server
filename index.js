@@ -178,6 +178,49 @@ async function run() {
         },
       });
     });
+
+    // Get single lesson by ID
+    app.get("/publicLesson/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            error: "Invalid lesson ID",
+          });
+        }
+
+        // Find the lesson
+        const lesson = await publicLessonCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!lesson) {
+          return res.status(404).json({
+            success: false,
+            error: "Lesson not found",
+          });
+        }
+        //view count increase
+        await publicLessonCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { viewsCount: 1 } }
+        );
+
+        res.json({
+          success: true,
+          lesson,
+        });
+      } catch (error) {
+        console.error("Error fetching lesson:", error);
+        res.status(500).json({
+          success: false,
+          error: "Failed to fetch lesson",
+        });
+      }
+    });
+
     //payment
 
     app.get("/users", async (req, res) => {
