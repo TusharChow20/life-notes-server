@@ -9,13 +9,11 @@ const port = process.env.PORT;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGO_URI;
 
-//  Initialize Stripe
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 //middlewares
 app.use(express.json());
 app.use(cors());
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -26,7 +24,6 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
     const myDB = client.db("LifeNotes");
     const userCollection = myDB.collection("userInfo");
@@ -141,10 +138,46 @@ async function run() {
 
     //lesson
     app.get("/publicLesson", async (req, res) => {
-      const result = await publicLessonCollection.find().toArray();
-      res.json(result);
-    });
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 9;
+      const skip = (page - 1) * limit;
 
+      const { category, emotionalTone, sortBy, search } = req.query;
+
+      let query = {};
+      if (category && category !== "All") query.category = category;
+      if (emotionalTone && emotionalTone !== "All")
+        query.emotionalTone = emotionalTone;
+      if (search) {
+        query.$or = [
+          { title: { $regex: search, $options: "i" } },
+          { description: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      let sort = {};
+      if (sortBy === "newest") sort = { createdAt: -1 };
+      if (sortBy === "oldest") sort = { createdAt: 1 };
+      if (sortBy === "mostSaved") sort = { favoritesCount: -1 };
+
+      const total = await publicLessonCollection.countDocuments(query);
+      const lessons = await publicLessonCollection
+        .find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+
+      res.json({
+        lessons,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    });
     //payment
 
     app.get("/users", async (req, res) => {
