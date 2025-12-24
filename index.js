@@ -29,6 +29,8 @@ async function run() {
     const userCollection = myDB.collection("userInfo");
     const paymentCollection = myDB.collection("payments");
     const publicLessonCollection = myDB.collection("publicLesson");
+    const likesCollection = myDB.collection("lessonLikes");
+    const favoritesCollection = myDB.collection("lessonFavorites");
     // Send a ping to confirm a successful connection
     //###############-------user api----###############
 
@@ -217,6 +219,138 @@ async function run() {
         res.status(500).json({
           success: false,
           error: "Failed to fetch lesson",
+        });
+      }
+    });
+
+    // check likes
+    app.get("/publicLesson/:id/checkLike", async (req, res) => {
+      const { id } = req.params;
+      const { userId } = req.query;
+      const existingLike = await likesCollection.findOne({
+        lessonId: id,
+        userId: userId,
+      });
+
+      res.json({
+        success: true,
+        isLiked: Boolean(existingLike),
+      });
+    });
+
+    //addlikes
+
+    app.post("/publicLesson/:id/like", async (req, res) => {
+      const { id } = req.params;
+      const { email, userId } = req.body;
+
+      const existingLike = await likesCollection.findOne({
+        lessonId: id,
+        userId: userId,
+      });
+      if (existingLike) {
+        // Unlike - Remove the like document
+        await likesCollection.deleteOne({
+          lessonId: id,
+          userId: userId,
+        });
+
+        // Decrement like count
+        await publicLessonCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { likesCount: -1 } }
+        );
+
+        return res.json({
+          success: true,
+          message: "Lesson unliked",
+          action: "unliked",
+        });
+      } else {
+        // Like - Add new like document
+        await likesCollection.insertOne({
+          lessonId: id,
+          userId: userId,
+          email: email,
+          likedAt: new Date(),
+        });
+
+        // Increment like count
+        await publicLessonCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { likesCount: 1 } }
+        );
+
+        return res.json({
+          success: true,
+          message: "Lesson liked",
+          action: "liked",
+        });
+      }
+    });
+
+    // cjheck favooutirte
+    app.get("/publicLesson/:id/checkFavorite", async (req, res) => {
+      const { id } = req.params;
+      const { userId } = req.query;
+      const existingFavorite = await favoritesCollection.findOne({
+        lessonId: id,
+        userId: userId,
+      });
+
+      res.json({
+        success: true,
+        isFavorited: Boolean(existingFavorite),
+      });
+    });
+    //add favcooutiee
+
+    app.post("/publicLesson/:id/favorite", async (req, res) => {
+      const { id } = req.params;
+      const { email, userId } = req.body;
+      const favoritesCollection = myDB.collection("lessonFavorites");
+      const existingFavorite = await favoritesCollection.findOne({
+        lessonId: id,
+        userId: userId,
+      });
+
+      if (existingFavorite) {
+        // Unfavorite - Remove the favorite document
+        await favoritesCollection.deleteOne({
+          lessonId: id,
+          userId: userId,
+        });
+
+        // Decrement favorite count
+        await publicLessonCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { favoritesCount: -1 } }
+        );
+
+        return res.json({
+          success: true,
+          message: "Removed from favorites",
+          action: "unfavorited",
+        });
+      } else {
+        // Favorite - Add new favorite document
+        await favoritesCollection.insertOne({
+          lessonId: id,
+          userId: userId,
+          email: email,
+          favoritedAt: new Date(),
+        });
+
+        // Increment favorite count
+        await publicLessonCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { favoritesCount: 1 } }
+        );
+
+        return res.json({
+          success: true,
+          message: "Added to favorites",
+          action: "favorited",
         });
       }
     });
