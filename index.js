@@ -493,6 +493,87 @@ async function run() {
       }
     });
 
+    //get favourites
+    app.get("/favorites", async (req, res) => {
+      console.log("📥 GET /favorites - Query:", req.query);
+
+      const { userId } = req.query;
+
+      const favorites = await favoritesCollection
+        .find({ email: userId })
+        .toArray();
+      const favoritesWithDetails = await Promise.all(
+        favorites.map(async (favorite) => {
+          try {
+            const lesson = await publicLessonCollection.findOne({
+              _id: new ObjectId(favorite.lessonId),
+            });
+
+            return {
+              _id: favorite._id.toString(),
+              lessonId: favorite.lessonId,
+              userId: favorite.userId,
+              lessonTitle: lesson.title || "Unknown",
+              lessonDescription: lesson.description || "",
+              category: lesson.category || "Uncategorized",
+              emotionalTone: lesson.emotionalTone || "Neutral",
+              duration: lesson.duration || null,
+              addedAt: favorite.favoritedAt || favorite.createdAt || new Date(),
+            };
+          } catch (err) {
+            console.error("Error processing favorite:", err);
+            return null;
+          }
+        })
+      );
+
+      const validFavorites = favoritesWithDetails.filter((f) => f !== null);
+
+      res.json({
+        success: true,
+        favorites: validFavorites,
+      });
+    });
+    //delete favourite
+    app.delete("/favorites/:favoriteId", async (req, res) => {
+      const { favoriteId } = req.params;
+
+      const { userId, lessonId } = req.body;
+
+      const favorite = await favoritesCollection.findOne({
+        _id: new ObjectId(favoriteId),
+        email: userId,
+      });
+
+      if (!favorite) {
+        return res.status(404).json({
+          success: false,
+          message: "Favorite not found or unauthorized",
+        });
+      }
+
+      const result = await favoritesCollection.deleteOne({
+        _id: new ObjectId(favoriteId),
+      });
+
+      await publicLessonCollection.updateOne(
+        { _id: new ObjectId(lessonId) },
+        { $inc: { favoritesCount: -1 } }
+      );
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Failed to delete favorite",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Removed from favorites",
+      });
+    });
+
     //add favcooutiee
 
     app.post("/publicLesson/:id/favorite", async (req, res) => {
