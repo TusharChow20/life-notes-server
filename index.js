@@ -207,6 +207,149 @@ async function run() {
       });
       res.json({ count });
     });
+    // Get single lesson by ID
+    app.get("/publicLesson/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        if (!ObjectId.isValid(id)) {
+          return res.status(400).json({
+            success: false,
+            error: "Invalid lesson ID",
+          });
+        }
+
+        // Find the lesson
+        const lesson = await publicLessonCollection.findOne({
+          _id: new ObjectId(id),
+        });
+
+        if (!lesson) {
+          return res.status(404).json({
+            success: false,
+            error: "Lesson not found",
+          });
+        }
+        //view count increase
+        await publicLessonCollection.updateOne(
+          { _id: new ObjectId(id) },
+          { $inc: { viewsCount: 1 } }
+        );
+
+        res.json({
+          success: true,
+          lesson,
+        });
+      } catch (error) {
+        console.error("Error fetching lesson:", error);
+        res.status(500).json({
+          success: false,
+          error: "Failed to fetch lesson",
+        });
+      }
+    });
+
+    // check likes
+    app.get("/publicLesson/:id/checkLike", async (req, res) => {
+      const { id } = req.params;
+      const { userId } = req.query;
+      const existingLike = await likesCollection.findOne({
+        lessonId: id,
+        userId: userId,
+      });
+
+      res.json({
+        success: true,
+        isLiked: Boolean(existingLike),
+      });
+    });
+
+    // cjheck favooutirte
+    app.get("/publicLesson/:id/checkFavorite", async (req, res) => {
+      const { id } = req.params;
+      const { userId } = req.query;
+      const existingFavorite = await favoritesCollection.findOne({
+        lessonId: id,
+        userId: userId,
+      });
+
+      res.json({
+        success: true,
+        isFavorited: Boolean(existingFavorite),
+      });
+    });
+
+    //get authoors lesson
+    app.get("/publicLesson/user/:email", async (req, res) => {
+      const { email } = req.params;
+
+      const lessons = await publicLessonCollection
+        .find({ creatorEmail: email })
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.json(lessons);
+    });
+
+    //update lesson by author
+    app.put("/publicLesson/:id", async (req, res) => {
+      const { id } = req.params;
+      const updateData = req.body;
+      updateData.updatedAt = new Date().toISOString();
+
+      const result = await publicLessonCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+
+      res.json({ success: true, message: "Lesson updated successfully" });
+    });
+
+    //toggle visibilaty
+    app.patch("/publicLesson/:id/visibility", async (req, res) => {
+      const { id } = req.params;
+      const { visibility } = req.body;
+
+      const result = await publicLessonCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            visibility,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+
+      res.json({ success: true, message: "Visibility updated successfully" });
+    });
+
+    //access level
+    app.patch("/publicLesson/:id/accessLevel", async (req, res) => {
+      const { id } = req.params;
+      const { accessLevel } = req.body;
+      const result = await publicLessonCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            accessLevel,
+            updatedAt: new Date(),
+          },
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).json({ error: "Lesson not found" });
+      }
+
+      res.json({ success: true, message: "Access level updated successfully" });
+    });
 
     //image setup
     app.post("/upload-image", upload.single("image"), async (req, res) => {
@@ -299,77 +442,6 @@ async function run() {
         throw new Error("Failed to insert lesson");
       }
     });
-
-    // Get single lesson by ID
-    app.get("/publicLesson/:id", async (req, res) => {
-      try {
-        const { id } = req.params;
-
-        if (!ObjectId.isValid(id)) {
-          return res.status(400).json({
-            success: false,
-            error: "Invalid lesson ID",
-          });
-        }
-
-        // Find the lesson
-        const lesson = await publicLessonCollection.findOne({
-          _id: new ObjectId(id),
-        });
-
-        if (!lesson) {
-          return res.status(404).json({
-            success: false,
-            error: "Lesson not found",
-          });
-        }
-        //view count increase
-        await publicLessonCollection.updateOne(
-          { _id: new ObjectId(id) },
-          { $inc: { viewsCount: 1 } }
-        );
-
-        res.json({
-          success: true,
-          lesson,
-        });
-      } catch (error) {
-        console.error("Error fetching lesson:", error);
-        res.status(500).json({
-          success: false,
-          error: "Failed to fetch lesson",
-        });
-      }
-    });
-
-    //delete lessson
-    app.delete("/publicLesson/:id", async (req, res) => {
-      const { id } = req.params;
-      const { email } = req.body;
-
-      const lesson = await publicLessonCollection.findOne({
-        _id: new ObjectId(id),
-      });
-
-      await publicLessonCollection.deleteOne({ _id: new ObjectId(id) });
-      res.json({ success: true, message: "Lesson deleted successfully" });
-    });
-
-    // check likes
-    app.get("/publicLesson/:id/checkLike", async (req, res) => {
-      const { id } = req.params;
-      const { userId } = req.query;
-      const existingLike = await likesCollection.findOne({
-        lessonId: id,
-        userId: userId,
-      });
-
-      res.json({
-        success: true,
-        isLiked: Boolean(existingLike),
-      });
-    });
-
     //addlikes
 
     app.post("/publicLesson/:id/like", async (req, res) => {
@@ -421,20 +493,6 @@ async function run() {
       }
     });
 
-    // cjheck favooutirte
-    app.get("/publicLesson/:id/checkFavorite", async (req, res) => {
-      const { id } = req.params;
-      const { userId } = req.query;
-      const existingFavorite = await favoritesCollection.findOne({
-        lessonId: id,
-        userId: userId,
-      });
-
-      res.json({
-        success: true,
-        isFavorited: Boolean(existingFavorite),
-      });
-    });
     //add favcooutiee
 
     app.post("/publicLesson/:id/favorite", async (req, res) => {
@@ -485,6 +543,15 @@ async function run() {
           action: "favorited",
         });
       }
+    });
+
+    //delete lessson
+    app.delete("/publicLesson/:id", async (req, res) => {
+      const { id } = req.params;
+      // const { email } = req.body;
+
+      await publicLessonCollection.deleteOne({ _id: new ObjectId(id) });
+      res.json({ success: true, message: "Lesson deleted successfully" });
     });
 
     //payment
