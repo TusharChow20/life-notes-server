@@ -198,6 +198,16 @@ async function run() {
       });
     });
 
+    //author lesson count
+    app.get("/publicLesson/count", async (req, res) => {
+      const { creatorEmail } = req.query;
+
+      const count = await publicLessonCollection.countDocuments({
+        creatorEmail,
+      });
+      res.json({ count });
+    });
+
     //image setup
     app.post("/upload-image", upload.single("image"), async (req, res) => {
       try {
@@ -253,8 +263,6 @@ async function run() {
         creatorEmail,
         creatorPhoto,
       } = req.body;
-
-    
 
       const newLesson = {
         title: title.trim(),
@@ -332,6 +340,19 @@ async function run() {
           error: "Failed to fetch lesson",
         });
       }
+    });
+
+    //delete lessson
+    app.delete("/publicLesson/:id", async (req, res) => {
+      const { id } = req.params;
+      const { email } = req.body;
+
+      const lesson = await publicLessonCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      await publicLessonCollection.deleteOne({ _id: new ObjectId(id) });
+      res.json({ success: true, message: "Lesson deleted successfully" });
     });
 
     // check likes
