@@ -290,6 +290,52 @@ async function run() {
       res.json(lessons);
     });
 
+    //favorite count
+    app.get("/publicLesson/favorites/count", async (req, res) => {
+      const { userId } = req.query;
+      const count = await favoritesCollection.countDocuments({ userId });
+      res.json({ success: true, count });
+    });
+
+    //update profile
+    app.put("/user/profile", async (req, res) => {
+      const { email, name, image } = req.body;
+      const updatedUser = await userCollection.findOneAndUpdate(
+        { email },
+        {
+          $set: {
+            name: name.trim(),
+            image,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!updatedUser) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      await publicLessonCollection.updateMany(
+        { creatorEmail: email },
+        {
+          $set: {
+            creatorName: name.trim(),
+            creatorPhoto: image,
+          },
+        }
+      );
+
+      res.json({
+        success: true,
+        message: "Profile updated successfully",
+        user: updatedUser,
+      });
+    });
+
     //update lesson by author
     app.put("/publicLesson/:id", async (req, res) => {
       const { id } = req.params;
@@ -495,8 +541,6 @@ async function run() {
 
     //get favourites
     app.get("/favorites", async (req, res) => {
-      console.log("📥 GET /favorites - Query:", req.query);
-
       const { userId } = req.query;
 
       const favorites = await favoritesCollection
