@@ -4,6 +4,8 @@ var cors = require("cors");
 const bcrypt = require("bcryptjs");
 
 require("dotenv").config();
+const cloudinary = require("./config/cloudinary");
+const multer = require("multer");
 const app = express();
 const port = process.env.PORT;
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -19,6 +21,21 @@ const client = new MongoClient(uri, {
     version: ServerApiVersion.v1,
     strict: true,
     deprecationErrors: true,
+  },
+});
+
+//multer memory storage
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      return cb(new Error("Only image files are allowed!"), false);
+    }
+    cb(null, true);
   },
 });
 
@@ -179,6 +196,100 @@ async function run() {
           totalPages: Math.ceil(total / limit),
         },
       });
+    });
+
+    //image setup
+    app.post("/upload-image", upload.single("image"), async (req, res) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({
+            success: false,
+            message: "No image file provided",
+          });
+        }
+
+        const b64 = Buffer.from(req.file.buffer).toString("base64");
+        const dataURI = `data:${req.file.mimetype};base64,${b64}`;
+
+        const result = await cloudinary.uploader.upload(dataURI, {
+          folder: "life-notes/lessons",
+          resource_type: "auto",
+          transformation: [
+            { width: 1200, height: 800, crop: "limit" },
+            { quality: "auto" },
+            { fetch_format: "auto" },
+          ],
+        });
+
+        res.json({
+          success: true,
+          message: "Image uploaded successfully",
+          imageUrl: result.secure_url,
+          publicId: result.public_id,
+        });
+      } catch (error) {
+        console.error("Upload error:", error);
+        res.status(500).json({
+          success: false,
+          message: "Failed to upload image",
+          error: error.message,
+        });
+      }
+    });
+
+    //poost lesson
+    app.post("/publicLesson", async (req, res) => {
+      const {
+        title,
+        description,
+        category,
+        emotionalTone,
+        image,
+        imagePublicId,
+        visibility,
+        accessLevel,
+        creatorId,
+        creatorName,
+        creatorEmail,
+        creatorPhoto,
+      } = req.body;
+
+    
+
+      const newLesson = {
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        emotionalTone,
+        image: image || null,
+        imagePublicId: imagePublicId || null, // Store for deletion later
+        visibility: visibility || "Public",
+        accessLevel: accessLevel || "free",
+        creatorId,
+        creatorName: creatorName || "Anonymous",
+        creatorEmail,
+        creatorPhoto: creatorPhoto || null,
+        likesCount: 0,
+        favoritesCount: 0,
+        commentsCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const result = await publicLessonCollection.insertOne(newLesson);
+
+      if (result.insertedId) {
+        res.status(201).json({
+          success: true,
+          message: "Lesson created successfully",
+          lessonId: result.insertedId.toString(),
+          lesson: {
+            _id: result.insertedId,
+            ...newLesson,
+          },
+        });
+      } else {
+        throw new Error("Failed to insert lesson");
+      }
     });
 
     // Get single lesson by ID
