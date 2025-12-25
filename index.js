@@ -289,6 +289,51 @@ async function run() {
         .toArray();
       res.json(lessons);
     });
+    //admin activity track
+    app.get("/admin/activity/:email", async (req, res) => {
+      const { email } = req.params;
+      const stats = await adminActivityCollection
+        .aggregate([
+          { $match: { adminEmail: email } },
+          {
+            $group: {
+              _id: null,
+              totalActions: { $sum: 1 },
+              lessonsModerated: {
+                $sum: { $cond: [{ $eq: ["$actionType", "moderated"] }, 1, 0] },
+              },
+              reportsReviewed: {
+                $sum: {
+                  $cond: [{ $eq: ["$actionType", "report_reviewed"] }, 1, 0],
+                },
+              },
+              contentDeleted: {
+                $sum: { $cond: [{ $eq: ["$actionType", "deleted"] }, 1, 0] },
+              },
+            },
+          },
+        ])
+        .toArray();
+
+      const recentActivity = await adminActivityCollection
+        .find({ adminEmail: email })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .toArray();
+
+      res.json({
+        success: true,
+        totalActions: stats[0]?.totalActions || 0,
+        lessonsModerated: stats[0]?.lessonsModerated || 0,
+        reportsReviewed: stats[0]?.reportsReviewed || 0,
+        contentDeleted: stats[0]?.contentDeleted || 0,
+        recentActivity: recentActivity.map((a) => ({
+          type: a.actionType,
+          description: a.description,
+          timestamp: a.createdAt,
+        })),
+      });
+    });
 
     //favorite count
     app.get("/publicLesson/favorites/count", async (req, res) => {
