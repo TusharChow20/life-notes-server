@@ -294,7 +294,7 @@ async function run() {
     //overall performance statss
     app.get("/admin/dashboard/stats", async (req, res) => {
       const totalUsers = await userCollection.countDocuments();
-      const todayStart = new Date();
+      const todayStart = new Date().toISOString();
       todayStart.setHours(0, 0, 0, 0);
       const newUsersToday = await userCollection.countDocuments({
         createdAt: { $gte: todayStart },
@@ -357,12 +357,120 @@ async function run() {
         todayLessons,
       });
     });
+    //admin lessson get
+    app.get("/admin/lessons", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 6;
+      const category = req.query.category || "";
+      const visibility = req.query.visibility || "";
+      const isFeatured = req.query.isFeatured || "";
+      const reviewStatus = req.query.reviewStatus || "";
+
+      const filter = {};
+      if (category) filter.category = category;
+      if (visibility) filter.visibility = visibility;
+      if (isFeatured) filter.isFeatured = isFeatured === "true";
+      if (reviewStatus) filter.reviewStatus = reviewStatus;
+
+      const pipeline = [
+        { $match: filter },
+
+        {
+          $facet: {
+            lessons: [
+              { $sort: { createdAt: -1 } },
+              { $skip: (page - 1) * limit },
+              { $limit: limit },
+            ],
+            total: [{ $count: "count" }],
+
+            stats: [
+              {
+                $group: {
+                  _id: null,
+                  totalLessons: { $sum: 1 },
+                  publicLessons: {
+                    $sum: {
+                      $cond: [{ $eq: ["$visibility", "Public"] }, 1, 0],
+                    },
+                  },
+                  privateLessons: {
+                    $sum: {
+                      $cond: [{ $eq: ["$visibility", "Private"] }, 1, 0],
+                    },
+                  },
+                  featuredLessons: {
+                    $sum: {
+                      $cond: ["$isFeatured", 1, 0],
+                    },
+                  },
+                },
+              },
+
+              {
+                $lookup: {
+                  from: "reports",
+                  pipeline: [
+                    { $match: { status: "pending" } },
+                    { $group: { _id: "$lessonId" } },
+                    { $count: "reportedLessons" },
+                  ],
+                  as: "reported",
+                },
+              },
+
+              {
+                $addFields: {
+                  reportedLessons: {
+                    $ifNull: [
+                      { $arrayElemAt: ["$reported.reportedLessons", 0] },
+                      0,
+                    ],
+                  },
+                },
+              },
+
+              {
+                $project: {
+                  _id: 0,
+                  reported: 0,
+                },
+              },
+            ],
+          },
+        },
+      ];
+
+      const result = await publicLessonCollection.aggregate(pipeline).toArray();
+
+      const lessons = result[0].lessons;
+      const total = result[0].total[0]?.count || 0;
+      const stats = result[0].stats[0] || {
+        totalLessons: 0,
+        publicLessons: 0,
+        privateLessons: 0,
+        featuredLessons: 0,
+        reportedLessons: 0,
+      };
+
+      res.json({
+        success: true,
+        lessons,
+        stats,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    });
 
     //growth data
     app.get("/admin/dashboard/growth", async (req, res) => {
       const days = parseInt(req.query.days) || 30;
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
+      const startDate = new Date().toISOString();
+      startDate.setDate(startDate.getDate().toISOString() - days);
 
       const userGrowth = await userCollection
         .aggregate([
@@ -423,7 +531,7 @@ async function run() {
       const fillDates = (data) => {
         const filled = [];
         const currentDate = new Date(startDate);
-        const endDate = new Date();
+        const endDate = new Date().toISOString();
 
         while (currentDate <= endDate) {
           const dateStr = currentDate.toISOString().split("T")[0];
@@ -586,6 +694,63 @@ async function run() {
       });
     });
 
+    //put feeeaturre status
+    app.put("/admin/lessons/:id/featured", async (req, res) => {
+      const { id } = req.params;
+      const { isFeatured } = req.body;
+
+      const result = await publicLessonCollection.findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            isFeatured: Boolean(isFeatured),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          message: "Lesson not found",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `Lesson ${
+          isFeatured ? "featured" : "unfeatured"
+        } successfully`,
+        lesson: result,
+      });
+    });
+
+    //reviewd by admin
+    app.put("/admin/lessons/:id/review", async (req, res) => {
+      const { id } = req.params;
+      const { reviewStatus, adminEmail } = req.body;
+
+      const result = await publicLessonCollection.findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            reviewStatus: reviewStatus || "reviewed",
+            reviewedBy: adminEmail,
+            reviewedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      res.json({
+        success: true,
+        message: "Lesson marked as reviewed",
+        lesson: result,
+      });
+    });
+
     // Ignore reports for a lesson
     app.put("/admin/reports/:lessonId/ignore", async (req, res) => {
       const { lessonId } = req.params;
@@ -719,7 +884,7 @@ async function run() {
         {
           $set: {
             visibility,
-            updatedAt: new Date(),
+            updatedAt: new Date().toISOString(),
           },
         }
       );
@@ -740,7 +905,7 @@ async function run() {
         {
           $set: {
             accessLevel,
-            updatedAt: new Date(),
+            updatedAt: new Date().toISOString(),
           },
         }
       );
@@ -824,8 +989,8 @@ async function run() {
         likesCount: 0,
         favoritesCount: 0,
         commentsCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
       const result = await publicLessonCollection.insertOne(newLesson);
 
@@ -877,7 +1042,7 @@ async function run() {
           lessonId: id,
           userId: userId,
           email: email,
-          likedAt: new Date(),
+          likedAt: new Date().toISOString(),
         });
 
         // Increment like count
@@ -1029,7 +1194,7 @@ async function run() {
           lessonId: id,
           userId: userId,
           email: email,
-          favoritedAt: new Date(),
+          favoritedAt: new Date().toISOString(),
         });
 
         // Increment favorite count
@@ -1067,7 +1232,7 @@ async function run() {
         reason,
         description: description || "",
         status: "pending",
-        createdAt: new Date(),
+        createdAt: new Date().toISOString(),
       };
       const existing = await reportsCollection.findOne({
         lessonId: new ObjectId(lessonId),
@@ -1214,7 +1379,7 @@ async function run() {
             {
               $set: {
                 isPremium: true,
-                premiumActivatedAt: new Date(),
+                premiumActivatedAt: new Date().toISOString(),
                 stripeSessionId: session.id,
               },
             }
@@ -1230,8 +1395,8 @@ async function run() {
             stripeSessionId: session.id,
             stripePaymentIntentId: session.payment_intent,
             planType: "premium",
-            paymentDate: new Date(),
-            createdAt: new Date(),
+            paymentDate: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
           };
 
           await paymentCollection.insertOne(paymentHistory);
