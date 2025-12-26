@@ -490,6 +490,95 @@ async function run() {
       });
     });
 
+    //get user for adminn manage
+    app.get("/admin/users", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+      const search = req.query.search || "";
+      const sortBy = req.query.sortBy || "createdAt";
+      const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+
+      // Build search filter
+      const searchFilter = search
+        ? {
+            $or: [
+              { name: { $regex: search, $options: "i" } },
+              { email: { $regex: search, $options: "i" } },
+            ],
+          }
+        : {};
+
+      const total = await userCollection.countDocuments(searchFilter);
+
+      const users = await userCollection
+        .find(searchFilter)
+        .sort({ [sortBy]: sortOrder })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .toArray();
+
+      // Get lesson counts for each user
+      const usersWithStats = await Promise.all(
+        users.map(async (user) => {
+          const lessonCount = await publicLessonCollection.countDocuments({
+            creatorEmail: user.email,
+          });
+          return {
+            ...user,
+            totalLessons: lessonCount,
+          };
+        })
+      );
+
+      res.json({
+        success: true,
+        users: usersWithStats,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    });
+
+    //update user role
+    app.put("/admin/users/:id/role", async (req, res) => {
+      const { id } = req.params;
+      const { role, adminEmail } = req.body;
+
+      if (!["user", "admin"].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid role",
+        });
+      }
+
+      const result = await userCollection.findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            role,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!result) {
+        return res.status(404).json({
+          success: false,
+          message: "User not found",
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `User role updated to ${role}`,
+        user: result,
+      });
+    });
+
     //favorite count
     app.get("/publicLesson/favorites/count", async (req, res) => {
       const { userId } = req.query;
