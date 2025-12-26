@@ -217,6 +217,78 @@ async function run() {
       });
     });
 
+    //get top contributer
+    // app.get("/top-contributors", async (req, res) => {
+    //   const limit = parseInt(req.query.limit) || 6;
+    //   const topContributors = await publicLessonCollection
+    //     .aggregate([
+    //       {
+    //         $group: {
+    //           _id: "$creatorEmail",
+    //           creatorName: { $first: "$creatorName" },
+    //           totalLikes: { $sum: "$likesCount" },
+    //           totalFavorites: { $sum: "$favoritesCount" },
+    //           lessonsCount: { $sum: 1 },
+    //         },
+    //       },
+    //       {
+    //         $sort: { totalLikes: -1 },
+    //       },
+    //       {
+    //         $limit: limit,
+    //       },
+    //       {
+    //         $project: {
+    //           _id: 1,
+    //           creatorEmail: "$_id",
+    //           creatorName: 1,
+    //           totalLikes: 1,
+    //           totalFavorites: 1,
+    //           lessonsCount: 1,
+    //         },
+    //       },
+    //     ])
+    //     .toArray();
+
+    //   res.json(topContributors);
+    // });
+
+    app.get("/top-contributors", async (req, res) => {
+      const limit = parseInt(req.query.limit) || 6;
+
+      const topContributors = await publicLessonCollection
+        .aggregate([
+          {
+            $group: {
+              _id: "$creatorEmail",
+              creatorName: { $first: "$creatorName" },
+              totalLikes: { $sum: "$likesCount" },
+              totalFavorites: { $sum: "$favoritesCount" },
+              lessonsCount: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { totalLikes: -1 },
+          },
+          {
+            $limit: limit,
+          },
+          {
+            $project: {
+              _id: 1,
+              creatorEmail: "$_id",
+              creatorName: 1,
+              totalLikes: 1,
+              totalFavorites: 1,
+              lessonsCount: 1,
+            },
+          },
+        ])
+        .toArray();
+
+      res.json(topContributors);
+    });
+
     //author lesson count
     app.get("/publicLesson/count", async (req, res) => {
       const { creatorEmail } = req.query;
