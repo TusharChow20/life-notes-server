@@ -867,6 +867,27 @@ async function run() {
         favorites: validFavorites,
       });
     });
+
+    //delete user
+    app.delete("/admin/users/:id", async (req, res) => {
+      const { id } = req.params;
+
+      const user = await userCollection.findOne({ _id: new ObjectId(id) });
+
+      await publicLessonCollection.deleteMany({ creatorEmail: user.email });
+
+      await likesCollection.deleteMany({ email: user.email });
+
+      await favoritesCollection.deleteMany({ email: user.email });
+
+      await userCollection.deleteOne({ _id: new ObjectId(id) });
+
+      res.json({
+        success: true,
+        message: "User and all their content deleted successfully",
+      });
+    });
+
     //delete favourite
     app.delete("/favorites/:favoriteId", async (req, res) => {
       const { favoriteId } = req.params;
