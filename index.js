@@ -19,7 +19,7 @@ app.use(cors());
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
-    strict: true,
+    strict: false,
     deprecationErrors: true,
   },
 });
@@ -49,6 +49,7 @@ async function run() {
     const likesCollection = myDB.collection("lessonLikes");
     const favoritesCollection = myDB.collection("lessonFavorites");
     const reportsCollection = myDB.collection("reports");
+    const adminActivityCollection = myDB.collection("adminActivity");
     // Send a ping to confirm a successful connection
     //###############-------user api----###############
 
@@ -293,55 +294,74 @@ async function run() {
 
     //overall performance statss
     app.get("/admin/dashboard/stats", async (req, res) => {
-      const totalUsers = await userCollection.countDocuments();
-      const todayStart = new Date().toISOString();
+      const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const newUsersToday = await userCollection.countDocuments({
-        createdAt: { $gte: todayStart },
-      });
-      const totalLessons = await publicLessonCollection.countDocuments();
 
-      const newLessonsToday = await publicLessonCollection.countDocuments({
-        createdAt: { $gte: todayStart },
-      });
+      // Convert to ISO string for MongoDB query
+      const todayStartISO = todayStart.toISOString();
 
-      const reportedLessons = await reportsCollection.distinct("lessonId", {
-        status: "pending",
-      });
-
-      const engagement = await publicLessonCollection
-        .aggregate([
-          {
-            $group: {
-              _id: null,
-              totalLikes: { $sum: "$likesCount" },
-              totalFavorites: { $sum: "$favoritesCount" },
+      // Parallel queries for better performance
+      const [
+        totalUsers,
+        newUsersToday,
+        totalLessons,
+        newLessonsToday,
+        reportedLessonsData,
+        engagement,
+        topContributors,
+        todayLessons,
+      ] = await Promise.all([
+        userCollection.countDocuments(),
+        userCollection.countDocuments({
+          createdAt: { $gte: todayStartISO },
+        }),
+        publicLessonCollection.countDocuments(),
+        publicLessonCollection.countDocuments({
+          createdAt: { $gte: todayStartISO },
+        }),
+        // FIXED: Use aggregation instead of distinct
+        reportsCollection
+          .aggregate([
+            { $match: { status: "pending" } },
+            { $group: { _id: "$lessonId" } },
+            { $count: "total" },
+          ])
+          .toArray(),
+        publicLessonCollection
+          .aggregate([
+            {
+              $group: {
+                _id: null,
+                totalLikes: { $sum: { $ifNull: ["$likesCount", 0] } },
+                totalFavorites: { $sum: { $ifNull: ["$favoritesCount", 0] } },
+              },
             },
-          },
-        ])
-        .toArray();
-
-      const topContributors = await publicLessonCollection
-        .aggregate([
-          {
-            $group: {
-              _id: "$creatorEmail",
-              name: { $first: "$creatorName" },
-              email: { $first: "$creatorEmail" },
-              totalLessons: { $sum: 1 },
-              totalLikes: { $sum: "$likesCount" },
-              totalFavorites: { $sum: "$favoritesCount" },
+          ])
+          .toArray(),
+        publicLessonCollection
+          .aggregate([
+            {
+              $group: {
+                _id: "$creatorEmail",
+                name: { $first: "$creatorName" },
+                email: { $first: "$creatorEmail" },
+                totalLessons: { $sum: 1 },
+                totalLikes: { $sum: { $ifNull: ["$likesCount", 0] } },
+                totalFavorites: { $sum: { $ifNull: ["$favoritesCount", 0] } },
+              },
             },
-          },
-          { $sort: { totalLessons: -1, totalLikes: -1 } },
-          { $limit: 5 },
-        ])
-        .toArray();
-      const todayLessons = await publicLessonCollection
-        .find({ createdAt: { $gte: todayStart } })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .toArray();
+            { $sort: { totalLessons: -1, totalLikes: -1 } },
+            { $limit: 5 },
+          ])
+          .toArray(),
+        publicLessonCollection
+          .find({ createdAt: { $gte: todayStartISO } })
+          .sort({ createdAt: -1 })
+          .limit(10)
+          .toArray(),
+      ]);
+
+      const reportedLessonsCount = reportedLessonsData[0]?.total || 0;
 
       res.json({
         success: true,
@@ -349,7 +369,7 @@ async function run() {
         newUsersToday,
         totalLessons,
         newLessonsToday,
-        reportedLessons: reportedLessons.length,
+        reportedLessons: reportedLessonsCount,
         totalEngagement:
           (engagement[0]?.totalLikes || 0) +
           (engagement[0]?.totalFavorites || 0),
@@ -469,20 +489,27 @@ async function run() {
     //growth data
     app.get("/admin/dashboard/growth", async (req, res) => {
       const days = parseInt(req.query.days) || 30;
-      const startDate = new Date().toISOString();
-      startDate.setDate(startDate.getDate().toISOString() - days);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+
+      // Convert to ISO string for MongoDB
+      const startDateISO = startDate.toISOString();
 
       const userGrowth = await userCollection
         .aggregate([
           {
             $match: {
-              createdAt: { $gte: startDate },
+              createdAt: { $gte: startDateISO },
             },
           },
           {
             $group: {
               _id: {
-                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: { $toDate: "$createdAt" },
+                },
               },
               count: { $sum: 1 },
             },
@@ -504,13 +531,16 @@ async function run() {
         .aggregate([
           {
             $match: {
-              createdAt: { $gte: startDate },
+              createdAt: { $gte: startDateISO },
             },
           },
           {
             $group: {
               _id: {
-                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+                $dateToString: {
+                  format: "%Y-%m-%d",
+                  date: { $toDate: "$createdAt" },
+                },
               },
               count: { $sum: 1 },
             },
@@ -531,7 +561,7 @@ async function run() {
       const fillDates = (data) => {
         const filled = [];
         const currentDate = new Date(startDate);
-        const endDate = new Date().toISOString();
+        const endDate = new Date();
 
         while (currentDate <= endDate) {
           const dateStr = currentDate.toISOString().split("T")[0];
