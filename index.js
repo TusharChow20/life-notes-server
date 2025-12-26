@@ -289,6 +289,160 @@ async function run() {
         .toArray();
       res.json(lessons);
     });
+
+    //overall performance statss
+    app.get("/admin/dashboard/stats", async (req, res) => {
+      const totalUsers = await userCollection.countDocuments();
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const newUsersToday = await userCollection.countDocuments({
+        createdAt: { $gte: todayStart },
+      });
+      const totalLessons = await publicLessonCollection.countDocuments();
+
+      const newLessonsToday = await publicLessonCollection.countDocuments({
+        createdAt: { $gte: todayStart },
+      });
+
+      const reportedLessons = await reportsCollection.distinct("lessonId", {
+        status: "pending",
+      });
+
+      const engagement = await publicLessonCollection
+        .aggregate([
+          {
+            $group: {
+              _id: null,
+              totalLikes: { $sum: "$likesCount" },
+              totalFavorites: { $sum: "$favoritesCount" },
+            },
+          },
+        ])
+        .toArray();
+
+      const topContributors = await publicLessonCollection
+        .aggregate([
+          {
+            $group: {
+              _id: "$creatorEmail",
+              name: { $first: "$creatorName" },
+              email: { $first: "$creatorEmail" },
+              totalLessons: { $sum: 1 },
+              totalLikes: { $sum: "$likesCount" },
+              totalFavorites: { $sum: "$favoritesCount" },
+            },
+          },
+          { $sort: { totalLessons: -1, totalLikes: -1 } },
+          { $limit: 5 },
+        ])
+        .toArray();
+      const todayLessons = await publicLessonCollection
+        .find({ createdAt: { $gte: todayStart } })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .toArray();
+
+      res.json({
+        success: true,
+        totalUsers,
+        newUsersToday,
+        totalLessons,
+        newLessonsToday,
+        reportedLessons: reportedLessons.length,
+        totalEngagement:
+          (engagement[0]?.totalLikes || 0) +
+          (engagement[0]?.totalFavorites || 0),
+        topContributors,
+        todayLessons,
+      });
+    });
+
+    //growth data
+    app.get("/admin/dashboard/growth", async (req, res) => {
+      const days = parseInt(req.query.days) || 30;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
+
+      const userGrowth = await userCollection
+        .aggregate([
+          {
+            $match: {
+              createdAt: { $gte: startDate },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+              },
+              count: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { _id: 1 },
+          },
+          {
+            $project: {
+              _id: 0,
+              date: "$_id",
+              count: 1,
+            },
+          },
+        ])
+        .toArray();
+
+      const lessonGrowth = await publicLessonCollection
+        .aggregate([
+          {
+            $match: {
+              createdAt: { $gte: startDate },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+              },
+              count: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { _id: 1 },
+          },
+          {
+            $project: {
+              _id: 0,
+              date: "$_id",
+              count: 1,
+            },
+          },
+        ])
+        .toArray();
+
+      const fillDates = (data) => {
+        const filled = [];
+        const currentDate = new Date(startDate);
+        const endDate = new Date();
+
+        while (currentDate <= endDate) {
+          const dateStr = currentDate.toISOString().split("T")[0];
+          const existing = data.find((d) => d.date === dateStr);
+          filled.push({
+            date: dateStr,
+            count: existing ? existing.count : 0,
+          });
+          currentDate.setDate(currentDate.getDate() + 1);
+        }
+        return filled;
+      };
+
+      res.json({
+        success: true,
+        userGrowth: fillDates(userGrowth),
+        lessonGrowth: fillDates(lessonGrowth),
+      });
+    });
+
     //admin activity track
     app.get("/admin/activity/:email", async (req, res) => {
       const { email } = req.params;
