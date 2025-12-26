@@ -48,6 +48,7 @@ async function run() {
     const publicLessonCollection = myDB.collection("publicLesson");
     const likesCollection = myDB.collection("lessonLikes");
     const favoritesCollection = myDB.collection("lessonFavorites");
+    const reportsCollection = myDB.collection("reports");
     // Send a ping to confirm a successful connection
     //###############-------user api----###############
 
@@ -867,6 +868,38 @@ async function run() {
           action: "favorited",
         });
       }
+    });
+
+    //post repoort in monngo
+    app.post("/reports", async (req, res) => {
+      const {
+        lessonId,
+        lessonTitle,
+        reporterId,
+        reporterName,
+        reporterEmail,
+        reason,
+        description,
+      } = req.body;
+
+      const reportDoc = {
+        lessonId: new ObjectId(lessonId),
+        lessonTitle: lessonTitle || "Untitled Lesson",
+        reporterId: reporterId ? new ObjectId(reporterId) : null,
+        reporterName: reporterName || "Anonymous",
+        reporterEmail,
+        reason,
+        description: description || "",
+        status: "pending",
+        createdAt: new Date(),
+      };
+
+      await reportsCollection.insertOne(reportDoc);
+
+      res.status(201).json({
+        success: true,
+        message: "Report submitted successfully",
+      });
     });
 
     //delete lessson
