@@ -297,10 +297,8 @@ async function run() {
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
 
-      // Convert to ISO string for MongoDB query
       const todayStartISO = todayStart.toISOString();
 
-      // Parallel queries for better performance
       const [
         totalUsers,
         newUsersToday,
@@ -319,7 +317,6 @@ async function run() {
         publicLessonCollection.countDocuments({
           createdAt: { $gte: todayStartISO },
         }),
-        // FIXED: Use aggregation instead of distinct
         reportsCollection
           .aggregate([
             { $match: { status: "pending" } },
@@ -780,6 +777,41 @@ async function run() {
         lesson: result,
       });
     });
+
+    //deelet lesson admin acees
+
+    app.delete("/admin/lessons/:id", async (req, res) => {
+      const { id } = req.params;
+    const { adminEmail } = req.body;
+
+    const lesson = await publicLessonCollection.findOne({ _id: new ObjectId(id) });
+    if (!lesson) {
+      return res.status(404).json({
+        success: false,
+        message: "Lesson not found"
+      });
+    }
+
+    // Delete image from Cloudinary if exists
+    if (lesson.imagePublicId) {
+      try {
+        await instance.delete(`/delete-image/${encodeURIComponent(lesson.imagePublicId)}`);
+      } catch (err) {
+        console.error("Failed to delete image:", err);
+      }
+    }
+
+    await likesCollection.deleteMany({ lessonId: id });
+    await favoritesCollection.deleteMany({ lessonId: id });
+    await reportsCollection.deleteMany({ lessonId: id });
+
+    await publicLessonCollection.deleteOne({ _id: new ObjectId(id) });
+
+    res.json({
+      success: true,
+      message: "Lesson deleted successfully"
+    });
+    })
 
     // Ignore reports for a lesson
     app.put("/admin/reports/:lessonId/ignore", async (req, res) => {
