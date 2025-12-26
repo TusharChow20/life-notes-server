@@ -542,6 +542,72 @@ async function run() {
       });
     });
 
+    //get admin reports
+    app.get("/admin/reports", async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 10;
+
+      const reportedLessons = await reportsCollection
+        .aggregate([
+          { $match: { status: "pending" } },
+          {
+            $group: {
+              _id: "$lessonId",
+              lessonTitle: { $first: "$lessonTitle" },
+              reportCount: { $sum: 1 },
+              reports: { $push: "$$ROOT" },
+            },
+          },
+          { $sort: { reportCount: -1 } },
+          { $skip: (page - 1) * limit },
+          { $limit: limit },
+        ])
+        .toArray();
+
+      const totalAgg = await reportsCollection
+        .aggregate([
+          { $match: { status: "pending" } },
+          { $group: { _id: "$lessonId" } },
+          { $count: "total" },
+        ])
+        .toArray();
+
+      const total = totalAgg[0]?.total || 0;
+
+      res.json({
+        success: true,
+        reportedLessons,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    });
+
+    // Ignore reports for a lesson
+    app.put("/admin/reports/:lessonId/ignore", async (req, res) => {
+      const { lessonId } = req.params;
+      const { adminEmail } = req.body;
+
+      await reportsCollection.updateMany(
+        { lessonId: new ObjectId(lessonId), status: "pending" },
+        {
+          $set: {
+            status: "ignored",
+            resolvedAt: new Date().toISOString(),
+            resolvedBy: adminEmail,
+          },
+        }
+      );
+
+      res.json({
+        success: true,
+        message: "Reports ignored successfully",
+      });
+    });
+
     //update user role
     app.put("/admin/users/:id/role", async (req, res) => {
       const { id } = req.params;
