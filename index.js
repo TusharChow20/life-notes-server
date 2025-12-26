@@ -130,6 +130,23 @@ async function run() {
       res.send({ success: true, result });
     });
 
+    // featuredLesson
+    app.get("/featured-lessons", async (req, res) => {
+      try {
+        const lessons = await publicLessonCollection
+          .find({
+            visibility: "public",
+            isFeatured: { $in: [true] },
+          })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.json(lessons);
+      } catch (err) {
+        res.status(500).json({ message: "Failed to fetch featured lessons" });
+      }
+    });
+
     app.post("/login", async (req, res) => {
       const { email, password } = req.body;
       const user = await userCollection.findOne({ email });
@@ -782,36 +799,40 @@ async function run() {
 
     app.delete("/admin/lessons/:id", async (req, res) => {
       const { id } = req.params;
-    const { adminEmail } = req.body;
+      const { adminEmail } = req.body;
 
-    const lesson = await publicLessonCollection.findOne({ _id: new ObjectId(id) });
-    if (!lesson) {
-      return res.status(404).json({
-        success: false,
-        message: "Lesson not found"
+      const lesson = await publicLessonCollection.findOne({
+        _id: new ObjectId(id),
       });
-    }
-
-    // Delete image from Cloudinary if exists
-    if (lesson.imagePublicId) {
-      try {
-        await instance.delete(`/delete-image/${encodeURIComponent(lesson.imagePublicId)}`);
-      } catch (err) {
-        console.error("Failed to delete image:", err);
+      if (!lesson) {
+        return res.status(404).json({
+          success: false,
+          message: "Lesson not found",
+        });
       }
-    }
 
-    await likesCollection.deleteMany({ lessonId: id });
-    await favoritesCollection.deleteMany({ lessonId: id });
-    await reportsCollection.deleteMany({ lessonId: id });
+      // Delete image from Cloudinary if exists
+      if (lesson.imagePublicId) {
+        try {
+          await instance.delete(
+            `/delete-image/${encodeURIComponent(lesson.imagePublicId)}`
+          );
+        } catch (err) {
+          console.error("Failed to delete image:", err);
+        }
+      }
 
-    await publicLessonCollection.deleteOne({ _id: new ObjectId(id) });
+      await likesCollection.deleteMany({ lessonId: id });
+      await favoritesCollection.deleteMany({ lessonId: id });
+      await reportsCollection.deleteMany({ lessonId: id });
 
-    res.json({
-      success: true,
-      message: "Lesson deleted successfully"
+      await publicLessonCollection.deleteOne({ _id: new ObjectId(id) });
+
+      res.json({
+        success: true,
+        message: "Lesson deleted successfully",
+      });
     });
-    })
 
     // Ignore reports for a lesson
     app.put("/admin/reports/:lessonId/ignore", async (req, res) => {
