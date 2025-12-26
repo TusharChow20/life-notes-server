@@ -893,6 +893,17 @@ async function run() {
         status: "pending",
         createdAt: new Date(),
       };
+      const existing = await reportsCollection.findOne({
+        lessonId: new ObjectId(lessonId),
+        reporterEmail,
+      });
+
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: "You already reported this lesson",
+        });
+      }
 
       await reportsCollection.insertOne(reportDoc);
 
