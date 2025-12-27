@@ -217,6 +217,85 @@ async function run() {
       });
     });
 
+    //get lesson of a single user
+    app.get("/publicLesson/creator/:creatorId", async (req, res) => {
+      const { creatorId } = req.params;
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 9;
+      const skip = (page - 1) * limit;
+
+      const { category, emotionalTone, sortBy, search } = req.query;
+
+      let query = { creatorId };
+
+      if (category && category !== "All") query.category = category;
+      if (emotionalTone && emotionalTone !== "All")
+        query.emotionalTone = emotionalTone;
+      if (search) {
+        query.$or = [
+          { title: { $regex: search, $options: "i" } },
+          { description: { $regex: search, $options: "i" } },
+        ];
+      }
+
+      let sort = { createdAt: -1 }; 
+      if (sortBy === "newest") sort = { createdAt: -1 };
+      if (sortBy === "oldest") sort = { createdAt: 1 };
+      if (sortBy === "mostSaved") sort = { favoritesCount: -1 };
+      if (sortBy === "mostLiked") sort = { likesCount: -1 };
+
+      const total = await publicLessonCollection.countDocuments(query);
+
+      const lessons = await publicLessonCollection
+        .find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+      const authorInfo =
+        lessons.length > 0
+          ? {
+              creatorId: lessons[0].creatorId,
+              creatorName: lessons[0].creatorName,
+              creatorEmail: lessons[0].creatorEmail,
+              creatorPhoto: lessons[0].creatorPhoto,
+            }
+          : null;
+
+      const allLessons = await publicLessonCollection
+        .find({ creatorId })
+        .toArray();
+
+      const stats = {
+        totalLessons: allLessons.length,
+        totalLikes: allLessons.reduce(
+          (sum, lesson) => sum + (lesson.likesCount || 0),
+          0
+        ),
+        totalFavorites: allLessons.reduce(
+          (sum, lesson) => sum + (lesson.favoritesCount || 0),
+          0
+        ),
+        totalViews: allLessons.reduce(
+          (sum, lesson) => sum + (lesson.viewsCount || 0),
+          0
+        ),
+      };
+
+      res.json({
+        success: true,
+        lessons,
+        authorInfo,
+        stats,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    });
+
     //get top contributer
     // app.get("/top-contributors", async (req, res) => {
     //   const limit = parseInt(req.query.limit) || 6;
