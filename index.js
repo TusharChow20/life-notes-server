@@ -41,7 +41,7 @@ const upload = multer({
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
     const myDB = client.db("LifeNotes");
     const userCollection = myDB.collection("userInfo");
     const paymentCollection = myDB.collection("payments");
