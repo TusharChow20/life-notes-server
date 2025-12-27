@@ -58,6 +58,7 @@ This is the backend service for **Life Notes** - a platform for sharing life les
 ## 📦 Installation & Setup
 
 ### Prerequisites
+
 ```bash
 node >= 18.0.0
 npm >= 9.0.0
@@ -65,17 +66,20 @@ MongoDB >= 6.0
 ```
 
 ### 1️⃣ Clone the Repository
+
 ```bash
-git clone https://github.com/yourusername/life-notes-backend.git
+git clone https://github.com/TusharChow20/life-notes-server.git
 cd life-notes-backend
 ```
 
 ### 2️⃣ Install Dependencies
+
 ```bash
 npm install
 ```
 
 ### 3️⃣ Environment Variables
+
 Create a `.env` file in the root directory:
 
 ```env
@@ -84,7 +88,6 @@ PORT=5000
 NODE_ENV=development
 
 # MongoDB Configuration
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/lifeNotes
 
 # JWT Secret
 JWT_SECRET=your_jwt_secret_here
@@ -104,20 +107,21 @@ FRONTEND_URL=http://localhost:3000
 ```
 
 ### 4️⃣ Run Development Server
+
 ```bash
-node index.js
+nodemon index.js
 ```
 
-Server will start on `http://localhost:5000` 🎉
+Server will start on `http://localhost:5000`
 
 ---
-
 
 ---
 
 ## 🛣️ API Endpoints
 
 ### 🔐 Authentication
+
 ```http
 POST   /api/auth/register          # Register new user
 POST   /api/auth/login             # Login user
@@ -126,6 +130,7 @@ GET    /api/auth/me                # Get current user
 ```
 
 ### 📝 Lessons
+
 ```http
 GET    /api/lessons                # Get all public lessons
 GET    /api/lessons/:id            # Get lesson by ID
@@ -139,6 +144,7 @@ POST   /api/lessons/:id/report     # Report lesson (Auth)
 ```
 
 ### 👤 Users
+
 ```http
 GET    /api/users/:id              # Get user profile
 GET    /api/users/:id/lessons      # Get user's lessons
@@ -147,6 +153,7 @@ GET    /api/users/favorites        # Get user favorites (Auth)
 ```
 
 ### 💳 Payments
+
 ```http
 POST   /api/payments/create-checkout-session   # Create Stripe session (Auth)
 POST   /api/payments/webhook                    # Stripe webhook
@@ -154,6 +161,7 @@ GET    /api/payments/verify-premium             # Verify premium status (Auth)
 ```
 
 ### 🛡️ Admin Routes
+
 ```http
 GET    /api/admin/users            # Get all users (Admin)
 PUT    /api/admin/users/:id/role   # Update user role (Admin)
@@ -166,6 +174,7 @@ GET    /api/admin/stats            # Get platform statistics (Admin)
 ```
 
 ### 🖼️ File Upload
+
 ```http
 POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 ```
@@ -175,6 +184,7 @@ POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 ## 📊 Database Schema
 
 ### 👤 User Collection
+
 ```javascript
 {
   _id: ObjectId,
@@ -190,6 +200,7 @@ POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 ```
 
 ### 📝 Lesson Collection
+
 ```javascript
 {
   _id: ObjectId,
@@ -211,6 +222,7 @@ POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 ```
 
 ### 🚩 Report Collection
+
 ```javascript
 {
   _id: ObjectId,
@@ -223,6 +235,7 @@ POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 ```
 
 ### 💬 Comment Collection
+
 ```javascript
 {
   _id: ObjectId,
@@ -234,6 +247,7 @@ POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 ```
 
 ### ⭐ Favorite Collection
+
 ```javascript
 {
   _id: ObjectId,
@@ -260,6 +274,7 @@ POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 ## 💳 Stripe Integration
 
 ### Payment Flow
+
 1. User clicks "Upgrade to Premium" on frontend
 2. Frontend calls `/api/payments/create-checkout-session`
 3. Backend creates Stripe checkout session
@@ -269,10 +284,11 @@ POST   /api/upload/image           # Upload image to Cloudinary (Auth)
 7. User redirected to success page
 
 ### Webhook Events Handled
+
 ```javascript
-checkout.session.completed  
-payment_intent.succeeded    
-payment_intent.failed        
+checkout.session.completed;
+payment_intent.succeeded;
+payment_intent.failed;
 ```
 
 ---
@@ -280,6 +296,7 @@ payment_intent.failed
 ## 🖼️ Cloudinary Integration
 
 ### Image Upload Process
+
 1. Frontend uploads image via `/api/upload/image`
 2. Multer handles multipart/form-data
 3. Image sent to Cloudinary
@@ -287,6 +304,7 @@ payment_intent.failed
 5. URL stored in MongoDB
 
 ### Supported Formats
+
 - JPEG, PNG, WebP
 - Max size: 5MB
 - Auto-optimization enabled
@@ -296,6 +314,7 @@ payment_intent.failed
 ## 📈 API Response Format
 
 ### Success Response
+
 ```json
 {
   "success": true,
@@ -307,6 +326,7 @@ payment_intent.failed
 ```
 
 ### Error Response
+
 ```json
 {
   "success": false,
@@ -324,6 +344,7 @@ payment_intent.failed
 Import the API collection and test endpoints:
 
 1. **Register a new user**
+
 ```json
 POST /api/auth/register
 {
@@ -335,6 +356,7 @@ POST /api/auth/register
 ```
 
 2. **Login**
+
 ```json
 POST /api/auth/login
 {
@@ -344,6 +366,7 @@ POST /api/auth/login
 ```
 
 3. **Create a lesson** (requires auth token)
+
 ```json
 POST /api/lessons
 Authorization: Bearer <your_jwt_token>
@@ -362,12 +385,14 @@ Authorization: Bearer <your_jwt_token>
 ## 🔧 Environment Setup
 
 ### Development
+
 ```bash
 NODE_ENV=development
 PORT=5000
 ```
 
 ### Production
+
 ```bash
 NODE_ENV=production
 PORT=80 or from hosting provider
@@ -386,7 +411,9 @@ PORT=80 or from hosting provider
 5. **Deploy** 🎉
 
 ### Important: Set Stripe Webhook Endpoint
+
 After deployment, configure Stripe webhook:
+
 ```
 https://your-api-domain.com/api/payments/webhook
 ```
@@ -396,25 +423,24 @@ https://your-api-domain.com/api/payments/webhook
 ## 🐛 Common Issues & Solutions
 
 ### Issue: MongoDB Connection Failed
+
 **Solution:** Check `MONGODB_URI` in `.env` file and ensure IP whitelist in MongoDB Atlas
 
 ### Issue: Stripe Webhook Not Working
+
 **Solution:** Use Stripe CLI for local testing:
+
 ```bash
 stripe listen --forward-to localhost:5000/api/payments/webhook
 ```
 
 ### Issue: CORS Error
+
 **Solution:** Verify `FRONTEND_URL` in `.env` matches your frontend domain
 
 ### Issue: File Upload Failed
+
 **Solution:** Check Cloudinary credentials and network connection
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -448,6 +474,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Made with ❤️ by [Tushar Chowdhury](https://www.linkedin.com/in/tusharchowdhury20211)**
 
-[![API Status](https://img.shields.io/badge/API-Live-success?style=for-the-badge)](https://life-notes-nu.vercel.app)
+[![Live Status](https://img.shields.io/badge/API-Live-success?style=for-the-badge)](https://life-notes-nu.vercel.app)
 
 </div>
